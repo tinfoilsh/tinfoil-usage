@@ -1,6 +1,6 @@
-# vllm-metered
+# tinfoil-usage
 
-`tinfoil_usage.py` — the vLLM middleware that reports per-request token counts
+`tinfoil_usage.py` is a vLLM middleware that reports per-request token counts
 to the gateway. The gateway bills traffic it cannot read, so the inference
 server is the only party that can count tokens. It reports them on
 `X-Tinfoil-Usage-Metrics`: a response header when they are known up front, an
