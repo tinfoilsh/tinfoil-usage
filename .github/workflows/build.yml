@@ -1,0 +1,110 @@
+# Builds one metered image per upstream vLLM base in use across the fleet.
+#
+# Adding a vLLM version: add a matrix entry with the upstream digest, run the
+# workflow, and paste the published digest from the job summary into the
+# consuming repo.
+
+name: Build metered bases
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - tinfoil_usage.py
+      - Dockerfile
+      - .github/workflows/build.yml
+
+concurrency:
+  group: vllm-metered-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check the wire bytes on both uvicorn protocols
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --quiet uvicorn httptools h11
+          .venv/bin/python test_tinfoil_usage.py
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - tag: v0.14.0
+            base: vllm/vllm-openai:v0.14.0@sha256:1d6866b87630d94f5e0cdae55ab5abb4ce0b03fcb84d9d10612f9d518d19d4fd
+          - tag: v0.15.1-cu130
+            base: vllm/vllm-openai:v0.15.1-cu130@sha256:6daf4c3bab1bfb0180069bd8f2a035c1c981a424584f5b0480caa9efd9933f72
+          - tag: v0.22.0
+            base: vllm/vllm-openai:v0.22.0@sha256:0fec7ec5f3e6bc168e54899935fb0557da908a4832a1dbc88e2debcf2f889416
+          - tag: v0.23.0-ubuntu2404
+            base: vllm/vllm-openai:v0.23.0-ubuntu2404@sha256:662e4975c5c9947f8723f4d8f438145971361a480a2ade1919bb9462a9f24088
+          - tag: v0.24.0-ubuntu2404
+            base: vllm/vllm-openai:v0.24.0-ubuntu2404@sha256:bfdefe75b5c3fb83f4f0fcaae8f39fac87941cbadb05cd2203f44a1689236c71
+          - tag: v0.25.0
+            base: vllm/vllm-openai:v0.25.0@sha256:fc56161ee42a011aeee78b65d0a81b6683c7d04402fd40503d14d4d6c98f07cb
+          - tag: v0.25.1
+            base: vllm/vllm-openai:v0.25.1@sha256:f0b9a0dc75a9fca3b6811e3279367b2d6a448055a000bfd13859587d74cef268
+          - tag: v0.26.0-ubuntu2404
+            base: vllm/vllm-openai:v0.26.0-ubuntu2404@sha256:ef7bfc14df9233e3e5d41e733e3be0afa6abbe5ae5f14ee0758110030f6cd53e
+          - tag: v0.27.0-ubuntu2404
+            base: vllm/vllm-openai:v0.27.0-ubuntu2404@sha256:ad9c99bccd0a106a9b76817dadd56ad7813a662a929b472ce35bdaa71396ed06
+          - tag: v0.27.1
+            base: vllm/vllm-openai:v0.27.1@sha256:c2f3b1b964e47809b722b5e75b61b1e7b39a50f70388cf2bf2418f16a9f31da2
+          - tag: omni-v0.16.0
+            base: vllm/vllm-omni:v0.16.0@sha256:33b1ed6505f67fa080297002b9df02dc2b6ad6b745787f3d04981f007f82f491
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push the metered image
+        id: build
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        env:
+          SOURCE_DATE_EPOCH: 0
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/${{ github.repository }}:${{ matrix.tag }}
+          build-args: |
+            BASE=${{ matrix.base }}
+
+      - name: Report the pinned reference
+        env:
+          TAG: ${{ matrix.tag }}
+          BASE: ${{ matrix.base }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          {
+            echo "### $TAG"
+            echo '```'
+            echo "ghcr.io/${{ github.repository }}:$TAG@$DIGEST"
+            echo '```'
+            echo "built from \`$BASE\`"
+          } >> "$GITHUB_STEP_SUMMARY"
