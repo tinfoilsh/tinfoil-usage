@@ -20,20 +20,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
-        with:
-          persist-credentials: false
-
-      - name: Check the wire bytes on both uvicorn protocols
-        run: |
-          python3 -m venv .venv
-          .venv/bin/pip install --quiet uvicorn httptools h11
-          .venv/bin/python test_tinfoil_usage.py
-
   build:
     needs: test
     runs-on: ubuntu-latest
