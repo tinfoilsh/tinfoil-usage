@@ -21,7 +21,6 @@ concurrency:
 
 jobs:
   build:
-    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read
